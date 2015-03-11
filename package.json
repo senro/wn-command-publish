@@ -1,0 +1,25 @@
+{
+  "name": "wn-command-publish",
+  "version": "0.0.1",
+  "description": "wn publish",
+  "keywords":[
+      "wn",
+      "wn publish"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/snail-team/wn-command-publish.git"
+  },
+  "bugs": {
+    "url": "https://github.com/snail-team/wn-command-pubish/issues"
+  },
+  "main": "index.js",
+  "author": "snail-team <passtome@foxmail.com>",
+  "engines": {
+    "node": ">= 0.10.0"
+  },
+  "license": "MIT",
+  "scripts": {
+    "test": "mocha --require should --reporter spec --timeout 10000"
+  }
+}
