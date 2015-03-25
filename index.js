@@ -7,10 +7,11 @@
  * 3.在该目录运行spm doc，和spm publish
  * */
 var exec = require('child_process').exec,
-    rd = require('rd'),
+//rd = require('rd'),
     child;
 var root=fis.util.realpath(process.cwd());
 var rootPathInfo=fis.util.pathinfo(root);
+var parsedRootPath=parsePath(root);
 var wwwTmpRoot=fis.project.getTempPath('www');
 var fs=require('fs');
 var fse = require('fs-extra');
@@ -18,12 +19,13 @@ var inquirer = require("inquirer");
 var Download = require('download');
 var progress = require('download-status');
 
+
 exports.name = 'publish';
 exports.usage = '[options]';
 exports.desc = 'publish package';
 exports.register = function (commander){
     commander
-        .option('-c, --customUrl <url>', 'publish to custom url, eq: http://spm.yearn.cc', String, 'http://spm.yearn.cc')
+        .option('-c, --customUrl <url>', 'publish to custom url, eq: http://spm.yearn.cc', String, 'http://spm.woniu.com')
         .option('-i, --inner', 'publish to inner http://spm.woniu.com', String, 'http://spm.woniu.com')
         .option('-o, --outer', 'publish to outer http://spmjs.io', String, 'http://spm.alipay.im')
         .option('-d, --doc','publish doc only', Boolean, true)
@@ -35,145 +37,175 @@ exports.register = function (commander){
             console.log('');
         })
         .action(function () {
-            /*
-            * 1.先执行spm install，安装该模块所需的模块
-            * 2.解析出当前文件夹所有路径
-            * 3.资源分析，如果该模块有html，css或者html，css，js，init.js都有，则生成demo.html到examples/,同时把所有图片拷过去
-            * 否则通过它的资源类型标记为css资源或者js资源，以便spm平台显示不同的缩略图
-            * 生成demo.html细节：
-            * html、css情况，通过路径读取他们的内容然后写到demo.html即可
-            * html，css，js，init.js，通过路径先读取html
-            * 4.执行spm doc
-            * */
 
             var packageJsonPath='./package.json';
             var fisConfPath='./fis-conf.js';
+            var readMeFile='./README.md';
             var options = arguments[arguments.length - 1];
             //通过参数配置上传网址
-            if(options.inner){
-                child = exec('spm config set registry '+options.inner,
+            if(options.inner||options.outer||options.customUrl){
+                child = exec('spm config set registry '+(options.inner||options.outer||options.customUrl),
                     function (error, stdout, stderr) {
+                        console.log(stdout);
+                        console.log(stderr);
                         if (error !== null) {
                             console.log('exec error: ' + error);
-                        }
-                    });
-            }
-            if(options.outer){
-                child = exec('spm config set registry '+options.outer,
-                    function (error, stdout, stderr) {
-                        if (error !== null) {
-                            console.log('exec error: ' + error);
-                        }
-                    });
-            }
-            if(options.customUrl){
-                child = exec('spm config set registry '+options.customUrl,
-                    function (error, stdout, stderr) {
-                        if (error !== null) {
-                            console.log('exec error: ' + error);
-                        }
-                    });
-            }
-
-            if(!fs.existsSync(packageJsonPath)){
-                //如果没有预置的package.Json,输出一个
-                inquirer.prompt([
-                    {
-                        type:'input',
-                        name:'moduleName',
-                        message:'模块名称是（不能有中文）?',
-                        default:rootPathInfo.basename,//默认为文件名
-                        validate:function(projectName){
-                            if(/^[\u2E80-\u9FFF]+$/g.test(projectName)){
-                                //如果有汉字
-                                return false;
-                            }
-                            return true;
-                        }
-                    },
-                    {
-                        type:'input',
-                        name:'moduleVersion',
-                        message:'版本号?',
-                        default:'0.0.1'
-                    },
-                    {
-                        type:'list',
-                        name:'moduleType',
-                        message:'模块类型是?',
-                        default:'js',
-                        choices:['组件','css','js']
-                    },
-                    {
-                        type:'input',
-                        name:'moduleMain',
-                        message:'模块主入口文件是?',
-                        default:'index.js'
-                    },
-                    {
-                        type:'input',
-                        name:'moduleDeps',
-                        message:'依赖哪些模块?',
-                        default:'jquery@1.9.1'
-                    }
-                ], function( answers ) {
-                    fse.outputJsonSync(packageJsonPath, {
-                        name: answers.moduleName,
-                        version:answers.moduleVersion,
-                        description: answers.moduleName,
-                        keywords: [
-                            answers.moduleName
-                        ],
-                        homepage: "",
-                        author: "snail-team",
-                        spm:{
-                            main:answers.moduleMain,
-                            type:answers.moduleType,
-                            dependencies:cwdToObj(answers.moduleDeps),
-                            devDependencies: {
-                                "expect.js": "0.3.1"
-                            }
-                        }
-                    });
-                    if(answers.moduleType=='组件'){
-                        generateDemoAndPublish(answers);
-                    }else{
-                        publish();
-                    }
-                });
-
-            }else{
-                //有预置的package.json
-                var packageJson=fse.readJsonSync(packageJsonPath);
-                if(!packageJson.spm.type){
-                    inquirer.prompt([
-                        {
-                            type:'list',
-                            name:'moduleType',
-                            message:'模块类型是?',
-                            default:'js',
-                            choices:['组件','css','js']
-                        }
-                    ], function( answers ) {
-                        packageJson.spm.type=answers.moduleType;
-                        //将spm.dependencies改动写入packageJson
-                        fse.writeJsonSync(packageJsonPath, packageJson);
-                        if(answers.moduleType=='组件'){
-                            generateDemoAndPublish({moduleName:packageJson.name,moduleVersion:packageJson.version});
                         }else{
-                            publish();
+                            if(!fs.existsSync(packageJsonPath)){
+                                //如果没有预置的package.Json,输出一个
+                                inquirer.prompt([
+                                    {
+                                        type:'input',
+                                        name:'moduleName',
+                                        message:'模块名称是（不能有中文）?',
+                                        default:parsedRootPath.name,//默认为文件名
+                                        validate:function(projectName){
+                                            if(/^[\u2E80-\u9FFF]+$/g.test(projectName)){
+                                                //如果有汉字
+                                                return false;
+                                            }
+                                            return true;
+                                        }
+                                    },
+                                    {
+                                        type:'input',
+                                        name:'moduleDescription',
+                                        message:'模块描述？',
+                                        default:parsedRootPath.name
+                                    },
+                                    {
+                                        type:'input',
+                                        name:'moduleVersion',
+                                        message:'版本号?',
+                                        default:parsedRootPath.version?parsedRootPath.version:'0.0.1'
+                                    },
+                                    {
+                                        type:'list',
+                                        name:'moduleType',
+                                        message:'模块类型是?',
+                                        default:'js',
+                                        choices:['组件','css','js']
+                                    },
+//                                    {
+//                                        type:'input',
+//                                        name:'moduleMain',
+//                                        message:'模块主入口文件是?',
+//                                        default:'index.js'
+//                                    },
+                                    {
+                                        type:'input',
+                                        name:'moduleDeps',
+                                        message:'依赖哪些模块?',
+                                        default:''
+                                    }
+                                ], function( answers ) {
+
+                                    ensureReadMeFile(readMeFile,answers);
+                                    fse.outputJsonSync(packageJsonPath, {
+                                        name: answers.moduleName,
+                                        version:answers.moduleVersion,
+                                        description: answers.moduleDescription,
+                                        keywords: [
+                                            answers.moduleName,
+                                            answers.moduleDescription
+                                        ],
+                                        homepage: "",
+                                        author: "snail-team",
+                                        spm:{
+                                            main:'',//为了解决spm doc会编译main文件因为wn语法报错问题，故设为空，answers.moduleMain
+                                            type:answers.moduleType,
+                                            dependencies:cwdToObj(answers.moduleDeps),
+                                            devDependencies: {
+                                                "expect.js": "0.3.1"
+                                            }
+                                        }
+                                    });
+                                    if(answers.moduleType=='组件'){
+                                        generateDemoAndPublish(answers);
+                                    }else{
+                                        publish();
+                                    }
+                                });
+
+                            }else{
+                                //有预置的package.json
+                                var packageJson=fse.readJsonSync(packageJsonPath);
+                                if(!packageJson.spm.type){
+                                    inquirer.prompt([
+                                        {
+                                            type:'list',
+                                            name:'moduleType',
+                                            message:'模块类型是?',
+                                            default:'js',
+                                            choices:['组件','css','js']
+                                        }
+                                    ], function( answers ) {
+                                        packageJson.spm.type=answers.moduleType;
+                                        //将spm.dependencies改动写入packageJson
+                                        fse.writeJsonSync(packageJsonPath, packageJson);
+                                        ensureReadMeFile(readMeFile,{moduleName:packageJson.name,moduleVersion:packageJson.version});
+
+                                        if(answers.moduleType=='组件'){
+                                            generateDemoAndPublish({moduleName:packageJson.name,moduleVersion:packageJson.version});
+                                        }else{
+                                            publish();
+                                        }
+
+                                    });
+                                }else if(packageJson.spm.type=='组件'){
+                                    generateDemoAndPublish({moduleName:packageJson.name,moduleVersion:packageJson.version});
+                                }else if(packageJson.spm.type!='组件'){
+                                    publish();
+                                }
+
+                            }
                         }
-
                     });
-                }else if(packageJson.spm.type=='组件'){
-                    generateDemoAndPublish({moduleName:packageJson.name,moduleVersion:packageJson.version});
-                }else if(packageJson.spm.type!='组件'){
-                    publish();
-                }
+            }
+//            if(options.outer){
+//                child = exec('spm config set registry '+options.outer,
+//                    function (error, stdout, stderr) {
+//                        if (error !== null) {
+//                            console.log('exec error: ' + error);
+//                        }
+//                    });
+//            }
+//            if(options.customUrl){
+//                child = exec('spm config set registry '+options.customUrl,
+//                    function (error, stdout, stderr) {
+//                        if (error !== null) {
+//                            console.log('exec error: ' + error);
+//                        }
+//                    });
+//            }
 
+            function ensureReadMeFile(file,answers){
+                /*
+                 保证readme文件的存在，存在则替换里面的name和version变量，不存在则创建一个readme文件
+                 */
+                //var stat = fs.lstatSync(file);
+
+                if(fs.existsSync(file)){
+                    var content=fs.readFileSync(file,'utf8');
+                    if(typeof content == 'object'){
+                        content=JSON.stringify(content);
+                    }
+                    content=content.replace(/\<\%name\%\>/g,answers.moduleName);
+                    content=content.replace(/\<\%version\%\>/g,answers.moduleVersion);
+
+                    fs.writeFileSync(file,content,'utf8');
+                }else{
+                    fs.writeFileSync(file, '# '+answers.moduleName+'\r\n'+answers.moduleName,'utf8');
+                }
             }
             function generateDemoAndPublish(answers){
                 //console.log(wwwTmpRoot);
+                //删除demo缓存文件，以免另一个组件生成demo，文件污染
+                fse.removeSync(wwwTmpRoot+'/wn-publish-tmp/');
+                fse.removeSync('./demo/');
+                fse.removeSync('./_site/');
+                fse.removeSync('./spm_modules/');
+
                 var targetDir=wwwTmpRoot+'/wn-publish-tmp/spm_modules/'+answers.moduleName+'/'+answers.moduleVersion;
                 //console.log(targetDir);
                 fse.ensureDir(targetDir, function(err) {
@@ -243,12 +275,14 @@ exports.register = function (commander){
                                             function (error, stdout, stderr) {
                                                 console.log(stdout);
                                                 console.log(stderr);
-                                                console.log("demo生成成功！");
 
-                                                publish();
                                                 if (error !== null) {
                                                     console.log('exec error: ' + error);
+                                                }else{
+                                                    publish();
+                                                    console.log("demo生成成功！");
                                                 }
+
                                             });
                                     });
                                     if (error !== null) {
@@ -271,41 +305,49 @@ exports.register = function (commander){
                     function (error, stdout, stderr) {
                         console.log(stdout);
                         console.log(stderr);
-                        console.log("模块依赖安装成功！");
                         child = exec('spm doc build',
                             function (error, stdout, stderr) {
                                 console.log(stdout);
                                 console.log(stderr);
-                                console.log("spm doc build成功！");
                                 child = exec('spm doc publish',
                                     function (error, stdout, stderr) {
                                         console.log(stdout);
                                         console.log(stderr);
-                                        console.log("spm doc publish成功！");
+
                                         //最好删除spm_modules，不然感觉doc的生成，有点污染源目录,最后上传该模块
                                         if(!options.doc){//如果doc参数不存在则执行spm publish
+                                            fse.removeSync('./demo/');
+                                            fse.removeSync('./_site/');
+                                            fse.removeSync('./spm_modules/');
                                             child = exec('spm publish',
                                                 function (error, stdout, stderr) {
                                                     console.log(stdout);
                                                     console.log(stderr);
-                                                    console.log("spm publish成功！");
 
                                                     if (error !== null) {
                                                         console.log('exec error: ' + error);
+                                                    }else{
+                                                        console.log("spm publish成功！");
                                                     }
                                                 });
                                         }
 
                                         if (error !== null) {
                                             console.log('exec error: ' + error);
+                                        }else{
+                                            console.log("spm doc publish成功！");
                                         }
                                     });
                                 if (error !== null) {
                                     console.log('exec error: ' + error);
+                                }else{
+                                    console.log("spm doc build成功！");
                                 }
                             });
                         if (error !== null) {
                             console.log('exec error: ' + error);
+                        }else{
+                            console.log("模块依赖安装成功！");
                         }
                     });
             }
@@ -341,20 +383,8 @@ exports.register = function (commander){
                 }
 
             }
-            function parsePath(path){
-                //判断模块的模块名和版本号情况
-                //D:/senro/senro/git/company/wn/wn-site/spm_modules/wn-9yin-nav/0.0.6
-                var tmpPath=path.split('/');
-                if(/[0-9]*\.[0-9]*\.[0-9]*/g.test(tmpPath[tmpPath.length-1])){
-                    //最后的名字是版本号，说明这是个从spm_modules安装的模块
-                    return {name:tmpPath[tmpPath.length-2],version:tmpPath[tmpPath.length-1]};
-                }else{
-                    //最后的名字不是版本号，说明这是个本地模块
-                    return {name:tmpPath[tmpPath.length-1],version:''};
-                }
 
-            }
- //             var argsStr=getArgsStr();
+            //             var argsStr=getArgsStr();
 //            child = exec('spm install '+argsStr,
 //                function (error, stdout, stderr) {
 //                    console.log('install: ' + stdout);
@@ -388,3 +418,16 @@ exports.register = function (commander){
 
         });
 };
+function parsePath(path){
+    //判断模块的模块名和版本号情况
+    //D:/senro/senro/git/company/wn/wn-site/spm_modules/wn-9yin-nav/0.0.6
+    var tmpPath=path.split('/');
+    if(/[0-9]*\.[0-9]*\.[0-9]*/g.test(tmpPath[tmpPath.length-1])){
+        //最后的名字是版本号，说明这是个从spm_modules安装的模块
+        return {name:tmpPath[tmpPath.length-2],version:tmpPath[tmpPath.length-1]};
+    }else{
+        //最后的名字不是版本号，说明这是个本地模块
+        return {name:tmpPath[tmpPath.length-1],version:''};
+    }
+
+}

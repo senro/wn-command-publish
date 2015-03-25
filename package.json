@@ -1,6 +1,6 @@
 {
   "name": "wn-command-publish",
-  "version": "0.0.1",
+  "version": "0.0.5",
   "description": "wn publish",
   "keywords":[
       "wn",
@@ -21,5 +21,11 @@
   "license": "MIT",
   "scripts": {
     "test": "mocha --require should --reporter spec --timeout 10000"
+  },
+   "dependencies": {
+    "download":"3.3.0",
+    "download-status":"2.1.1",
+    "inquirer":"0.8.0",
+    "fs-extra": "^0.16.3"
   }
 }
