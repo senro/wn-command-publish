@@ -1,10 +1,19 @@
 'use strict';
 /*
- * 1.首先判断该目录有没有package.json，如果有则说明该模块是从spm平台安装的模块，
- * 如果没有则开始询问模块名，版本号，和依赖情况，模块类型（组件，css，js）生成一个默认的package.json
- * 2.如果模块类型是组件，拷贝该目录到www临时目录/wn-publish-tmp/spm_modules，同时生成一个调用该模块的
- * 页面到该目录的views里，然后在www临时目录/wn-publish-tmp/运行wn release，生成到当前目录的examples/demo/目录里
- * 3.在该目录运行spm doc，和spm publish
+ wn publish 命令
+ 参数：
+ 设置customUrl，inner，outer，doc，prepare四个参数
+ -c --customUrl <url>可以设置publish的目标源为自定义平台
+ -i --inner设置发布到内网平台，spm.woniu.com
+ -o --outer设置发布到外网平台，spmjs.io
+ -d --doc设置只发布doc，不发布该模块
+ -p --prepare设置只生成package.json和readme
+ 流程：
+ 1.首先判断该目录有没有package.json，如果有则说明该模块是从spm平台安装的模块，
+ 如果没有则开始询问模块名，描述，版本号，和依赖情况，模块类型（组件，css，js）生成一个默认的package.json
+ 2.如果模块类型是组件，拷贝该目录到C:\Users\用户名\AppData\Local\.wn-tmp\www临时目录/wn-publish-tmp/spm_modules，同时从snail-team/wn-module-demo/下载demo页面的模板文件到www临时目录/wn-publish-tmp/，然后在www临时目录/wn-publish-tmp/运行wn release，生成到待上传模块目录的demo/目录里
+ 3.在该目录运行spm install，spm doc build，和spm doc publish，如果--doc参数不存在则再运行spm publish
+
  * */
 var exec = require('child_process').exec,
 //rd = require('rd'),
@@ -29,6 +38,7 @@ exports.register = function (commander){
         .option('-i, --inner', 'publish to inner http://spm.woniu.com', String, 'http://spm.woniu.com')
         .option('-o, --outer', 'publish to outer http://spmjs.io', String, 'http://spm.alipay.im')
         .option('-d, --doc','publish doc only', Boolean, true)
+        .option('-p, --prepare','ohly prepare publish package.json and readme', Boolean, true)
         .on('--help', function(){
             console.log('   Examples:'.blue.bold);
             console.log('');
@@ -120,16 +130,24 @@ exports.register = function (commander){
                                             }
                                         }
                                     });
+
                                     if(answers.moduleType=='组件'){
-                                        generateDemoAndPublish(answers);
+                                        if(!options.prepare){//如果prepare参数不存在则执行publish
+                                            generateDemoAndPublish(answers);
+                                        }
                                     }else{
-                                        publish();
+                                        if(!options.prepare){//如果prepare参数不存在则执行publish
+                                            publish();
+                                        }
                                     }
                                 });
 
                             }else{
                                 //有预置的package.json
+
                                 var packageJson=fse.readJsonSync(packageJsonPath);
+                                ensureReadMeFile(readMeFile,{moduleName:packageJson.name,moduleVersion:packageJson.version});
+
                                 if(!packageJson.spm.type){
                                     inquirer.prompt([
                                         {
@@ -141,43 +159,35 @@ exports.register = function (commander){
                                         }
                                     ], function( answers ) {
                                         packageJson.spm.type=answers.moduleType;
+
                                         //将spm.dependencies改动写入packageJson
                                         fse.writeJsonSync(packageJsonPath, packageJson);
-                                        ensureReadMeFile(readMeFile,{moduleName:packageJson.name,moduleVersion:packageJson.version});
 
                                         if(answers.moduleType=='组件'){
-                                            generateDemoAndPublish({moduleName:packageJson.name,moduleVersion:packageJson.version});
+                                            if(!options.prepare){//如果prepare参数不存在则执行publish
+                                                generateDemoAndPublish({moduleName:packageJson.name,moduleVersion:packageJson.version});
+                                            }
                                         }else{
-                                            publish();
+                                            if(!options.prepare){//如果prepare参数不存在则执行publish
+                                                publish();
+                                            }
                                         }
 
                                     });
                                 }else if(packageJson.spm.type=='组件'){
-                                    generateDemoAndPublish({moduleName:packageJson.name,moduleVersion:packageJson.version});
+                                    if(!options.prepare){//如果prepare参数不存在则执行publish
+                                        generateDemoAndPublish({moduleName:packageJson.name,moduleVersion:packageJson.version});
+                                    }
                                 }else if(packageJson.spm.type!='组件'){
-                                    publish();
+                                    if(!options.prepare){//如果prepare参数不存在则执行publish
+                                        publish();
+                                    }
                                 }
 
                             }
                         }
                     });
             }
-//            if(options.outer){
-//                child = exec('spm config set registry '+options.outer,
-//                    function (error, stdout, stderr) {
-//                        if (error !== null) {
-//                            console.log('exec error: ' + error);
-//                        }
-//                    });
-//            }
-//            if(options.customUrl){
-//                child = exec('spm config set registry '+options.customUrl,
-//                    function (error, stdout, stderr) {
-//                        if (error !== null) {
-//                            console.log('exec error: ' + error);
-//                        }
-//                    });
-//            }
 
             function ensureReadMeFile(file,answers){
                 /*
@@ -383,39 +393,6 @@ exports.register = function (commander){
                 }
 
             }
-
-            //             var argsStr=getArgsStr();
-//            child = exec('spm install '+argsStr,
-//                function (error, stdout, stderr) {
-//                    console.log('install: ' + stdout);
-//                    console.log(stderr);
-//                    if (error !== null) {
-//                        console.log('exec error: ' + error);
-//                    }
-//                });
-//            function getArgsStr(){
-//                var str='';
-//                for(var i=0;i<process.argv.length;i++){
-//                    if(i>2){
-//                        str+=process.argv[i]+' ';
-//                    }else if(i==process.argv.length-1){
-//                        str+=process.argv[i];
-//                    }
-//                }
-//                return str;
-//            }
-//            function parseArgs(args){
-//                var str={args:'',options:{}};
-//                for(var i in args){
-//                    if(typeof args[i] == 'string'){
-//                        str.args+=args[i]+' ';
-//                    }else if(typeof args[i] == 'object'){
-//                        str.options=args[i];
-//                    }
-//                }
-//                return str;
-//            }
-
         });
 };
 function parsePath(path){
